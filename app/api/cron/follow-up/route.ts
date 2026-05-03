@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { runFollowUpAgent } from '@/lib/agent';
 
+export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // 1 min, Free tier limit
 
 export async function GET(req: Request) {
