@@ -57,165 +57,287 @@ export default function LifeSaverDashboard() {
     .filter(e => e.patient_id === selectedId)
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  if (loading) return <div className="loading-screen">LOADING LIFESAVER...</div>;
+  if (loading) return <div className="loading-screen">INITIALIZING LIFESAVER SYSTEM...</div>;
 
   return (
     <div className="dashboard-root">
+      {/* Top Navbar */}
       <nav className="top-nav">
         <div className="nav-left">
+          <div className="logo-box">LS</div>
           <span className="brand">LifeSaver</span>
-          <span className="divider">|</span>
-          <span className="subtitle">Clinical Command Center</span>
+          <span className="divider">/</span>
+          <span className="subtitle">Clinical Triage Engine</span>
         </div>
         <div className="nav-right">
-          <div className="status-dot"></div>
-          <span className="status-text">AGENT ACTIVE</span>
+          <div className="agent-status">
+            <div className="pulse-dot"></div>
+            <span className="status-label">LLM AGENT ACTIVE</span>
+          </div>
+          <div className="user-profile">RA</div>
         </div>
       </nav>
 
       <div className="main-layout">
-        <div className="registry-column">
-          <div className="column-header">ACTIVE REGISTRY ({patients.length})</div>
+        {/* Patient Sidebar */}
+        <aside className="registry-sidebar">
+          <div className="sidebar-header">
+            <span>ACTIVE PATIENTS</span>
+            <span className="count-badge">{patients.length}</span>
+          </div>
           <div className="patient-list">
-            {patients.map(p => (
-              <button 
-                key={p.id}
-                onClick={() => setSelectedId(p.id)}
-                className={`patient-card ${selectedId === p.id ? 'active' : ''}`}
-              >
-                <div className="card-top">
-                  <div className={`indicator ${p.workflow_step === 'escalated' ? 'urgent' : ''}`}></div>
-                  <div className="patient-info">
-                    <div className="patient-name">{p.name}</div>
-                    <div className="patient-phone">{p.phone}</div>
+            {patients.map(p => {
+              const isEscalated = p.workflow_step === 'escalated' || p.risk_level === 'critical';
+              return (
+                <button 
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  className={`patient-card ${selectedId === p.id ? 'active' : ''} ${isEscalated ? 'urgent' : ''}`}
+                >
+                  <div className="card-accent"></div>
+                  <div className="card-main">
+                    <div className="card-row">
+                      <span className="name">{p.name}</span>
+                      <span className="time">Just now</span>
+                    </div>
+                    <div className="card-row secondary">
+                      <span className="phone">{p.phone}</span>
+                      <span className={`risk-dot ${p.risk_level}`}></span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Main Intelligence Panel */}
+        <main className="intelligence-panel">
+          {selectedPatient ? (
+            <div className="intelligence-scroll">
+              
+              {/* Header Section */}
+              <header className="patient-header">
+                <div className="header-top">
+                  <h1 className="display-name">{selectedPatient.name}</h1>
+                  <div className="badge-row">
+                    <span className="protocol-badge">Day {selectedPatient.workflow_step.split('_')[1] || '1'} Protocol</span>
+                    <span className={`risk-badge ${selectedPatient.risk_level}`}>{selectedPatient.risk_level.toUpperCase()} RISK</span>
                   </div>
                 </div>
-                <div className="card-bottom">
-                  <span className="step-badge">{p.workflow_step}</span>
-                  <span className="time-ago">{p.risk_level === 'critical' ? 'IMMEDIATE' : 'Stable'}</span>
+                <div className="header-meta">
+                  <div className="meta-item">
+                    <label>TELEMETRY ID</label>
+                    <span>{selectedPatient.id.slice(0, 8)}</span>
+                  </div>
+                  <div className="meta-item">
+                    <label>CONTACT</label>
+                    <span>{selectedPatient.phone}</span>
+                  </div>
+                  <div className="meta-item">
+                    <label>NEXT CHECK-IN</label>
+                    <span>Scheduled in 14h</span>
+                  </div>
                 </div>
-              </button>
-            ))}
-          </div>
-        </div>
+              </header>
 
-        <div className="detail-column">
-          <div className="detail-content">
-            <div className="hero-section">
-              <h1 className="hero-name">{selectedPatient?.name || '---'}</h1>
-              <div className="hero-meta">
-                <span>{selectedPatient?.phone}</span>
-                <span className="risk-label">{selectedPatient?.risk_level} Risk</span>
+              {/* Grid Section */}
+              <div className="info-grid">
+                
+                {/* Managed Conversation */}
+                <section className="convo-section">
+                  <div className="section-header">MANAGED TRIAGE THREAD</div>
+                  <div className="convo-feed">
+                    {patientEvents.length === 0 && <div className="empty-feed">Awaiting initial outreach...</div>}
+                    {patientEvents.map(e => {
+                      if (e.type === 'sms_sent') return (
+                        <div key={e.id} className="bubble agent">
+                          <label>AGENT OUTREACH</label>
+                          <p>{e.payload.message}</p>
+                          <time>{new Date(e.created_at).toLocaleTimeString()}</time>
+                        </div>
+                      );
+                      if (e.type === 'sms_received') return (
+                        <div key={e.id} className="bubble patient">
+                          <label>PATIENT REPLY</label>
+                          <p>{e.payload.body}</p>
+                          <time>{new Date(e.created_at).toLocaleTimeString()}</time>
+                        </div>
+                      );
+                      if (e.type === 'agent_reasoning') return (
+                        <div key={e.id} className="reasoning-note">
+                          <span className="gear">⚙</span>
+                          <span>{e.payload.steps?.[0]?.text}</span>
+                        </div>
+                      );
+                      if (e.type === 'escalated') return (
+                        <div key={e.id} className="escalation-alert">
+                          🚨 CRITICAL ESCALATION: {e.payload.reason}
+                        </div>
+                      );
+                      return null;
+                    })}
+                  </div>
+                </section>
+
+                {/* Patient Context & Strikes */}
+                <div className="context-column">
+                  
+                  {/* Delivery Health */}
+                  <section className="panel-box">
+                    <div className="panel-header">DELIVERY HEALTH</div>
+                    <div className="strike-display">
+                      <label>NON-RESPONSE STRIKES (1/3)</label>
+                      <div className="strike-track">
+                        <div className="strike-hit"></div>
+                        <div className="strike-slot"></div>
+                        <div className="strike-slot"></div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Clinical Context */}
+                  <section className="panel-box clinical">
+                    <div className="panel-header">CLINICAL CONTEXT</div>
+                    <div className="clinical-text">
+                      {selectedPatient.discharge_summary ? (
+                        <p>{selectedPatient.discharge_summary}</p>
+                      ) : (
+                        <div className="placeholder-text">No discharge summary uploaded for this patient.</div>
+                      )}
+                    </div>
+                  </section>
+
+                  {/* Sentiment Analysis */}
+                  <section className="panel-box">
+                    <div className="panel-header">SENTIMENT TRACKING</div>
+                    <div className="sentiment-stat">
+                      <span className="stat-value">NEUTRAL</span>
+                      <span className="stat-desc">Monitoring for respiratory distress indicators.</span>
+                    </div>
+                  </section>
+
+                </div>
               </div>
             </div>
+          ) : (
+            <div className="no-selection">Select a patient from the registry to view clinical intelligence.</div>
+          )}
 
-            <div className="convo-container">
-              <div className="convo-header">MANAGED CONVERSATION</div>
-              <div className="convo-feed">
-                {patientEvents.length === 0 && (
-                  <div className="empty-state">Waiting for agent to initiate protocol...</div>
-                )}
-                {patientEvents.map(e => {
-                  if (e.type === 'sms_sent') {
-                    return (
-                      <div key={e.id} className="chat-bubble agent">
-                        <div className="bubble-label">AGENT OUTREACH</div>
-                        <div className="bubble-content">{e.payload.message}</div>
-                        <div className="bubble-time">{new Date(e.created_at).toLocaleTimeString()}</div>
-                      </div>
-                    );
-                  }
-                  if (e.type === 'sms_received') {
-                    return (
-                      <div key={e.id} className="chat-bubble patient">
-                        <div className="bubble-label">PATIENT REPLY</div>
-                        <div className="bubble-content">{e.payload.body}</div>
-                        <div className="bubble-time">{new Date(e.created_at).toLocaleTimeString()}</div>
-                      </div>
-                    );
-                  }
-                  if (e.type === 'agent_reasoning') {
-                    return (
-                      <div key={e.id} className="reasoning-note">
-                        <span className="note-icon">⚙</span>
-                        {e.payload.steps?.[0]?.text || 'Agent analyzing patient state...'}
-                      </div>
-                    );
-                  }
-                  if (e.type === 'escalated') {
-                    return (
-                      <div key={e.id} className="alert-event urgent">
-                        🚨 ESCALATED TO CLINICAL TEAM: {e.payload.reason}
-                      </div>
-                    );
-                  }
-                  return null;
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="action-footer">
-            <button className="btn-primary">Take Over Conversation</button>
-            <button className="btn-secondary">Escalate to Nurse</button>
-          </div>
-        </div>
+          {/* Persistent Action Bar */}
+          <footer className="action-bar">
+            <button className="btn-takeover">Take Over Conversation</button>
+            <button className="btn-nurse">Escalate to Charge Nurse</button>
+          </footer>
+        </main>
       </div>
 
       <style jsx>{`
         .dashboard-root { background: #000; color: #fff; height: 100vh; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-        .top-nav { height: 64px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; }
-        .brand { font-weight: 800; font-size: 20px; letter-spacing: -0.04em; }
-        .divider { color: #333; margin: 0 16px; }
-        .subtitle { color: #555; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
-        .nav-right { display: flex; align-items: center; gap: 8px; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981; }
-        .status-text { font-size: 10px; font-weight: 800; color: #555; letter-spacing: 0.1em; }
+        
+        /* Navbar */
+        .top-nav { height: 64px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: #080808; }
+        .logo-box { width: 28px; height: 28px; background: #fff; color: #000; font-weight: 900; font-size: 14px; border-radius: 6px; display: flex; align-items: center; justify-content: center; margin-right: 12px; }
+        .brand { font-weight: 800; font-size: 18px; letter-spacing: -0.03em; }
+        .divider { color: #333; margin: 0 12px; }
+        .subtitle { color: #666; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; }
+        .nav-right { display: flex; align-items: center; gap: 24px; }
+        .agent-status { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 12px; border-radius: 99px; border: 1px solid #222; }
+        .pulse-dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; animation: pulse 2s infinite; }
+        .status-label { font-size: 9px; font-weight: 800; color: #10b981; letter-spacing: 0.1em; }
+        .user-profile { width: 32px; height: 32px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #666; }
+
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
 
         .main-layout { display: flex; flex: 1; overflow: hidden; }
-        .registry-column { width: 380px; border-right: 1px solid #222; display: flex; flex-direction: column; }
-        .column-header { padding: 16px 24px; font-size: 10px; font-weight: 800; color: #444; text-transform: uppercase; letter-spacing: 0.2em; border-bottom: 1px solid #222; background: #080808; }
+
+        /* Sidebar */
+        .registry-sidebar { width: 340px; border-right: 1px solid #1a1a1a; display: flex; flex-direction: column; background: #050505; }
+        .sidebar-header { padding: 20px 24px; border-bottom: 1px solid #1a1a1a; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-header span { font-size: 10px; font-weight: 800; color: #444; letter-spacing: 0.2em; }
+        .count-badge { background: #111; color: #888; padding: 2px 6px; border-radius: 4px; }
         .patient-list { flex: 1; overflow-y: auto; }
-        .patient-card { width: 100%; border: none; background: transparent; padding: 24px; text-align: left; cursor: pointer; border-bottom: 1px solid #111; transition: all 0.2s; }
-        .patient-card.active { background: #0a0a0a; border-bottom: 1px solid #222; }
-        .card-top { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
-        .indicator { width: 4px; height: 32px; background: #222; border-radius: 2px; }
-        .indicator.urgent { background: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
-        .patient-name { font-size: 18px; font-weight: 700; color: #fff; }
-        .patient-phone { font-size: 13px; color: #444; font-family: monospace; }
-        .step-badge { font-size: 10px; font-weight: 800; color: #555; text-transform: uppercase; border: 1px solid #222; padding: 2px 8px; border-radius: 4px; }
-        .time-ago { font-size: 11px; color: #333; font-weight: 600; }
+        .patient-card { width: 100%; border: none; background: transparent; padding: 20px 24px; text-align: left; cursor: pointer; border-bottom: 1px solid #0f0f0f; transition: 0.2s; position: relative; }
+        .patient-card:hover { background: #0a0a0a; }
+        .patient-card.active { background: #111; }
+        .card-accent { position: absolute; left: 0; top: 20px; bottom: 20px; width: 3px; background: #222; border-radius: 0 2px 2px 0; }
+        .active .card-accent { background: #444; }
+        .urgent .card-accent { background: #fff; box-shadow: 0 0 10px #fff; }
+        .card-main { padding-left: 12px; }
+        .card-row { display: flex; justify-content: space-between; align-items: center; }
+        .name { font-size: 15px; font-weight: 700; color: #eee; }
+        .time { font-size: 11px; color: #333; }
+        .card-row.secondary { margin-top: 4px; }
+        .phone { font-size: 12px; color: #444; font-family: monospace; }
+        .risk-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .risk-dot.critical { background: #ef4444; }
+        .risk-dot.high { background: #f59e0b; }
+        .risk-dot.low { background: #10b981; }
 
-        .detail-column { flex: 1; display: flex; flex-direction: column; background: #030303; }
-        .detail-content { flex: 1; overflow-y: auto; padding: 64px; }
-        .hero-section { margin-bottom: 48px; }
-        .hero-name { font-size: 48px; font-weight: 800; letter-spacing: -0.05em; margin-bottom: 8px; }
-        .hero-meta { display: flex; gap: 24px; color: #444; font-size: 14px; font-weight: 600; }
-        .risk-label { text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+        /* Intelligence Panel */
+        .intelligence-panel { flex: 1; display: flex; flex-direction: column; background: #000; position: relative; }
+        .intelligence-scroll { flex: 1; overflow-y: auto; padding: 48px 64px; }
+        
+        .patient-header { margin-bottom: 48px; }
+        .display-name { font-size: 44px; font-weight: 800; letter-spacing: -0.05em; margin-bottom: 12px; }
+        .badge-row { display: flex; gap: 12px; }
+        .protocol-badge { background: #111; border: 1px solid #222; padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #888; }
+        .risk-badge { padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 900; }
+        .risk-badge.critical { background: #fff; color: #000; }
+        .risk-badge.high { background: #f59e0b20; border: 1px solid #f59e0b40; color: #f59e0b; }
+        .risk-badge.low { background: #10b98120; border: 1px solid #10b98140; color: #10b981; }
 
-        .convo-container { border: 1px solid #111; border-radius: 24px; background: #000; display: flex; flex-direction: column; }
-        .convo-header { padding: 16px 24px; border-bottom: 1px solid #111; font-size: 10px; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.2em; }
+        .header-meta { display: flex; gap: 48px; margin-top: 32px; padding: 24px; background: #080808; border-radius: 16px; border: 1px solid #111; }
+        .meta-item label { display: block; font-size: 9px; font-weight: 800; color: #333; letter-spacing: 0.15em; margin-bottom: 6px; }
+        .meta-item span { font-size: 14px; font-weight: 700; color: #ddd; font-family: monospace; }
+
+        .info-grid { display: grid; grid-template-cols: 1fr 300px; gap: 32px; margin-top: 48px; }
+
+        /* Conversation */
+        .convo-section { background: #000; border: 1px solid #111; border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; }
+        .section-header { padding: 16px 24px; border-bottom: 1px solid #111; font-size: 10px; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.2em; }
         .convo-feed { padding: 32px; display: flex; flex-direction: column; gap: 24px; }
-        .empty-state { text-align: center; color: #222; font-style: italic; font-size: 14px; padding: 48px 0; }
+        .empty-feed { text-align: center; color: #222; font-style: italic; padding: 32px 0; }
+        
+        .bubble { max-width: 85%; display: flex; flex-direction: column; gap: 6px; }
+        .bubble.agent { align-self: flex-start; }
+        .bubble.patient { align-self: flex-end; align-items: flex-end; }
+        .bubble label { font-size: 9px; font-weight: 800; color: #333; letter-spacing: 0.1em; }
+        .bubble p { padding: 16px 20px; border-radius: 16px; font-size: 14px; line-height: 1.5; font-weight: 500; }
+        .agent p { background: #111; color: #bbb; border: 1px solid #222; }
+        .patient p { background: #fff; color: #000; font-weight: 600; }
+        .bubble time { font-size: 10px; color: #222; font-family: monospace; }
 
-        .chat-bubble { max-width: 80%; display: flex; flex-direction: column; gap: 4px; }
-        .chat-bubble.agent { align-self: flex-start; }
-        .chat-bubble.patient { align-self: flex-end; align-items: flex-end; }
-        .bubble-label { font-size: 9px; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.1em; }
-        .bubble-content { padding: 16px 20px; border-radius: 16px; font-size: 14px; line-height: 1.5; font-weight: 500; }
-        .agent .bubble-content { background: #111; color: #ddd; border: 1px solid #222; }
-        .patient .bubble-content { background: #fff; color: #000; }
-        .bubble-time { font-size: 10px; color: #222; margin-top: 4px; font-family: monospace; }
+        .reasoning-note { background: #050505; border: 1px solid #111; padding: 16px 20px; border-radius: 12px; font-size: 12px; color: #555; font-style: italic; display: flex; gap: 12px; align-items: center; line-height: 1.4; }
+        .gear { color: #222; font-style: normal; font-size: 16px; }
+        .escalation-alert { background: #7f1d1d20; border: 1px solid #7f1d1d50; color: #ef4444; padding: 16px; border-radius: 12px; text-align: center; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
 
-        .reasoning-note { background: #080808; border: 1px solid #111; padding: 16px 20px; border-radius: 12px; font-size: 12px; color: #444; font-style: italic; display: flex; gap: 12px; align-items: center; }
-        .note-icon { color: #222; font-style: normal; }
+        /* Sidebar Column */
+        .context-column { display: flex; flex-direction: column; gap: 24px; }
+        .panel-box { background: #080808; border: 1px solid #111; border-radius: 16px; padding: 20px; }
+        .panel-header { font-size: 9px; font-weight: 800; color: #333; letter-spacing: 0.15em; margin-bottom: 16px; text-transform: uppercase; }
+        
+        .strike-display label { font-size: 10px; font-weight: 700; color: #555; display: block; margin-bottom: 12px; }
+        .strike-track { display: flex; gap: 8px; }
+        .strike-hit { height: 6px; flex: 1; background: #fff; border-radius: 3px; box-shadow: 0 0 10px rgba(255,255,255,0.4); }
+        .strike-slot { height: 6px; flex: 1; background: #1a1a1a; border-radius: 3px; }
 
-        .alert-event { background: #7f1d1d20; border: 1px solid #7f1d1d50; color: #ef4444; padding: 16px; border-radius: 12px; text-align: center; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
+        .clinical-text p { font-size: 12px; color: #666; line-height: 1.6; }
+        .placeholder-text { font-size: 11px; color: #333; font-style: italic; text-align: center; padding: 16px 0; }
 
-        .action-footer { padding: 48px 64px; border-top: 1px solid #111; display: flex; flex-direction: column; gap: 12px; }
-        .btn-primary { height: 56px; background: #fff; color: #000; border: none; border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; }
-        .btn-secondary { height: 48px; background: transparent; color: #444; border: 1px solid #222; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
-        .loading-screen { background: #000; color: #fff; height: 100vh; display: flex; align-items: center; justify-content: center; font-weight: 900; letter-spacing: 0.2em; }
+        .sentiment-stat { display: flex; flex-direction: column; gap: 4px; }
+        .stat-value { font-size: 14px; font-weight: 800; color: #ddd; }
+        .stat-desc { font-size: 11px; color: #444; line-height: 1.4; }
+
+        /* Action Footer */
+        .action-bar { padding: 24px 64px; border-top: 1px solid #1a1a1a; display: flex; gap: 16px; background: #080808; position: sticky; bottom: 0; }
+        .btn-takeover { flex: 1; height: 48px; background: #fff; color: #000; border: none; border-radius: 10px; font-size: 14px; font-weight: 800; cursor: pointer; transition: 0.2s; }
+        .btn-takeover:hover { background: #ddd; }
+        .btn-nurse { flex: 1; height: 48px; background: transparent; color: #444; border: 1px solid #222; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-nurse:hover { color: #fff; border-color: #444; }
+
+        .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; color: #222; font-size: 15px; font-weight: 600; text-align: center; padding: 0 64px; }
+        .loading-screen { background: #000; color: #fff; height: 100vh; display: flex; align-items: center; justify-content: center; font-weight: 900; letter-spacing: 0.3em; font-size: 14px; }
       `}</style>
     </div>
   );
