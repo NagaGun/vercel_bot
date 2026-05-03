@@ -6,8 +6,15 @@ import { runFollowUpAgent } from '@/lib/agent';
 export const maxDuration = 60; // 1 min, Free tier limit
 
 export async function GET(req: Request) {
-  // Verify this is actually from Vercel Cron
-  if (req.headers.get('Authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Hackathon workaround: allow triggering via browser URL parameter or Vercel Cron header
+  const url = new URL(req.url);
+  const secretParam = url.searchParams.get('secret');
+  const authHeader = req.headers.get('Authorization');
+  
+  if (
+    authHeader !== `Bearer ${process.env.CRON_SECRET}` && 
+    secretParam !== process.env.CRON_SECRET
+  ) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
