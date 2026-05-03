@@ -5,6 +5,22 @@ import { db } from './db';
 import { sendSMS } from './twilio';
 
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
+  // Pull last 3 events for minimal Demo memory context
+  const historyQuery = await db.query(
+    `SELECT type, payload FROM events WHERE patient_id = $1 ORDER BY id DESC LIMIT 3`,
+    [patientId]
+  );
+  
+  let historyContext = '';
+  if (historyQuery.rows.length > 0) {
+    historyContext = `\n\nRecent interaction history for context:\n` + 
+      historyQuery.rows.reverse().map(r => `[${r.type}] ${JSON.stringify(r.payload)}`).join('\n');
+  }
+
+  const basePrompt = incomingMessage
+    ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action.`
+    : `Time to send scheduled follow-up to patient ${patientId}. Look up their record and send the right message.`;
+
   const result = await generateText({
     model: anthropic('claude-sonnet-4-20250514'),
     maxSteps: 8,
@@ -14,9 +30,7 @@ Danger signs requiring IMMEDIATE escalation: chest pain, shortness of breath, ca
 confusion, fever above 103, surgical site opening, heavy bleeding.
 Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalate when uncertain.`,
 
-    prompt: incomingMessage
-      ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action.`
-      : `Time to send scheduled follow-up to patient ${patientId}. Look up their record and send the right message.`,
+    prompt: basePrompt + historyContext,
 
     tools: {
       lookupPatient: tool({
@@ -82,7 +96,19 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
             `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'escalated', $2)`,
             [patientId, JSON.stringify({ reason, urgency })]
           );
-          // In prod: trigger Slack/pager/email to on-call nurse
+          // Slack Ping via Agent 
+          if (process.env.SLACK_WEBHOOK_URL) {
+            try {
+              await fetch(process.env.SLACK_WEBHOOK_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                  text: `🚨 *URGENT AGENT ESCALATION*\nPatient ID \`${patientId}\` triggered a high-risk condition. \n*Reason*: ${reason}\n*Risk*: ${urgency}`
+                })
+              });
+            } catch (e) {
+               console.error('Failed Slack ping from agent', e);
+            }
+          }
           return { escalated: true, reason };
         },
       }),
