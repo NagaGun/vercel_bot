@@ -89,12 +89,12 @@ If this is a scheduled check-in and no previous message was sent, YOU MUST SEND 
         [patientId, JSON.stringify({ steps: [{ text: content, toolCalls: [action.type] }] })]
       );
 
-      return { ok: patientId, action: action.type, message: action.message };
+      return { ok: true, action: action.type, message: action.message };
     } catch (e) {
       console.error('Action execution failed', e);
-      return { ok: patientId, reasoning: content, error: String(e) };
+      return { ok: false, error: String(e) };
     }
   }
 
-  return { ok: patientId, reasoning: content, error: 'No action found' };
+  return { ok: true, reasoning: content };
 }

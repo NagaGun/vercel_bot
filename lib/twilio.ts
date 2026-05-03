@@ -6,6 +6,11 @@ export const twilioClient = twilio(
 );
 
 export async function sendSMS(to: string, body: string) {
+  if (process.env.MOCK_SMS === 'true') {
+    console.log('MOCK SMS TO:', to, 'BODY:', body);
+    return { sid: 'MOCK_SID_' + Math.random().toString(36).substring(7) };
+  }
+
   const message = await twilioClient.messages.create({
     body,
     to,
