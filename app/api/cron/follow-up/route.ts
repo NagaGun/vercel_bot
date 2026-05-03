@@ -37,6 +37,7 @@ export async function GET(req: Request) {
   );
 
   return NextResponse.json({ 
+    v: 2,
     processed: results.length,
     results: results.map((r, i) => ({
       patient: due.rows[i]?.id,

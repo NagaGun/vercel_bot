@@ -90,9 +90,10 @@ If this is a scheduled check-in and no previous message was sent, YOU MUST SEND 
 
       return { ok: patientId, action: action.type, message: action.message };
     } catch (e) {
-      console.error('JSON Parse Error', e);
+      console.error('Action execution failed', e);
+      return { ok: patientId, reasoning: content, error: String(e) };
     }
   }
 
-  return { ok: patientId, reasoning: content };
+  return { ok: patientId, reasoning: content, error: 'No action found' };
 }
