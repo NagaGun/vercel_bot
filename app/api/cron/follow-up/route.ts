@@ -27,8 +27,8 @@ export async function GET(req: Request) {
   const results = await Promise.allSettled(
     due.rows.map(async ({ id }) => {
       try {
-        await runFollowUpAgent(id);
-        return { ok: id };
+        const res = await runFollowUpAgent(id);
+        return res;
       } catch (err) {
         console.error("Agent error for", id, err);
         return { error: String(err), patientId: id };
