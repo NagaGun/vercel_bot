@@ -4,9 +4,8 @@ import { z } from 'zod';
 import { db } from './db';
 import { sendSMS } from './twilio';
 
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// openai is imported from @ai-sdk/openai, no need to redefine it
+
 
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
   // Pull last 3 events for conversation memory
