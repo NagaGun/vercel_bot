@@ -61,11 +61,12 @@ If this is a scheduled check-in and no previous message was sent, YOU MUST SEND 
       const action = JSON.parse(jsonMatch[0]);
       
       if (action.type === 'send_sms' && action.message) {
-        await sendSMS(patient.phone, action.message);
+        const twilioRes = await sendSMS(patient.phone, action.message);
         await db.query(
           `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'sms_sent', $2)`,
-          [patientId, JSON.stringify({ message: action.message })]
+          [patientId, JSON.stringify({ message: action.message, sid: twilioRes.sid })]
         );
+        return { ok: patientId, action: action.type, message: action.message, sid: twilioRes.sid };
       } else if (action.type === 'escalate') {
         await db.query(
           `UPDATE patients SET workflow_step='escalated', risk_level=$1 WHERE id=$2`,

@@ -6,9 +6,11 @@ export const twilioClient = twilio(
 );
 
 export async function sendSMS(to: string, body: string) {
-  return await twilioClient.messages.create({
+  const message = await twilioClient.messages.create({
     body,
     to,
     from: process.env.TWILIO_PHONE_NUMBER,
   });
+  console.log('Twilio Message Sent, SID:', message.sid);
+  return message;
 }
