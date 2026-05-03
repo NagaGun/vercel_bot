@@ -25,7 +25,6 @@ export async function runFollowUpAgent(patientId: string, incomingMessage?: stri
   const systemPrompt = `You are CareOS, a clinical post-discharge follow-up agent.
 Your job: contact patients via SMS, parse responses, and escalate to nurses for danger signs (chest pain, breathing issues, etc).
 Context for Patient ${patient.name}:
-- Discharge Summary: ${patient.discharge_summary || 'None'}
 - Current Step: ${patient.workflow_step}
 - History: ${history}
 
