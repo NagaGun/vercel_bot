@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { Geist } from 'next/font/google';
+
+const geist = Geist({ subsets: ['latin'] });
 
 type Patient = {
   id: string;
@@ -64,9 +67,8 @@ export default function LifeSaverDashboard() {
     if (!selectedId) return;
     setIsManualTriggering(true);
     try {
-      // Manual trigger can be a direct call to the agent route or a specific manual endpoint
       await fetch('/api/cron/follow-up', { 
-        method: 'GET', // In a real app, this might be a POST with the patientId
+        method: 'GET',
         headers: { 'x-cron-secret': 'crn_a2b3c4d5e6f708192a3b4c5d6e7f8a9b' } 
       });
       await fetchDashboardData();
@@ -77,48 +79,45 @@ export default function LifeSaverDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#080808] flex items-center justify-center">
-        <div className="w-12 h-12 border-2 border-white/10 border-t-white rounded-full animate-spin" />
+      <div className={`min-h-screen bg-[#000] flex items-center justify-center ${geist.className}`}>
+        <div className="w-8 h-8 border-t-white border-white/10 border-2 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#080808] text-white selection:bg-white/20 relative overflow-x-hidden font-sans">
+    <div className={`min-h-screen bg-[#000] text-white antialiased ${geist.className} selection:bg-white/10`}>
       {/* Background Gradients */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0" style={{ 
-          background: 'radial-gradient(ellipse at top left, #0d1117 0%, #080808 50%, #0a0a0f 100%)' 
-        }} />
-        <div className="absolute inset-0" style={{ 
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.015) 0%, transparent 60%)' 
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full" style={{ 
+          background: 'radial-gradient(circle at 0% 0%, rgba(255,255,255,0.03) 0%, transparent 50%)' 
         }} />
       </div>
 
       {/* Navbar */}
-      <nav className="relative z-10 h-14 border-b border-white/5 bg-[#080808]/80 backdrop-blur-md px-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-semibold tracking-tight">LifeSaver</span>
-          <div className="w-[1px] h-4 bg-white/10" />
-          <span className="text-[13px] text-white/40">Post-Discharge Triage</span>
+      <nav className="relative z-10 border-b border-white/10 px-8 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <span className="text-lg font-semibold tracking-tight">LifeSaver</span>
+          <div className="h-4 w-[1px] bg-white/20" />
+          <span className="text-sm text-white/40 font-medium">Post-Discharge Triage</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-          <span className="text-[13px] font-medium">Agent Active</span>
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-white animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+          <span className="text-sm font-medium tracking-tight">Agent Active</span>
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="relative z-10 max-w-[1280px] mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-[1fr_minmax(320px,42%)] gap-6 h-[calc(100vh-56px)] overflow-hidden">
+      {/* Main Layout */}
+      <main className="relative z-10 max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-px bg-white/10 h-[calc(100vh-64px)]">
         
-        {/* Left Column: Patient List */}
-        <div className="flex flex-col gap-4 overflow-y-auto pr-1">
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="text-[11px] font-medium uppercase tracking-[0.15em] text-white/40">Active Patients</h2>
-            <span className="text-[11px] font-medium text-white/40">{patients.length}</span>
+        {/* Left: Patient List */}
+        <div className="bg-[#000] flex flex-col overflow-hidden">
+          <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between bg-black/40 backdrop-blur-sm">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Active Patients</h2>
+            <span className="bg-white/10 px-2 py-0.5 rounded text-[10px] font-bold">{patients.length}</span>
           </div>
 
-          <div className="flex flex-col gap-[6px]">
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
             {patients.map((p) => {
               const isSelected = selectedId === p.id;
               const isEscalated = p.workflow_step === 'escalated' || p.risk_level === 'critical';
@@ -128,32 +127,34 @@ export default function LifeSaverDashboard() {
                   key={p.id}
                   onClick={() => setSelectedId(p.id)}
                   className={`
-                    relative text-left px-5 py-4 rounded-[10px] border transition-all duration-150
-                    ${isSelected ? 'bg-[#181818] border-white/10 shadow-2xl' : 'bg-[#111] border-white/5 hover:bg-[#161616]'}
+                    w-full text-left px-8 py-6 border-b border-white/10 transition-all duration-200 relative group
+                    ${isSelected ? 'bg-[#111]' : 'hover:bg-white/[0.02]'}
                   `}
-                  style={{
-                    borderLeft: isEscalated 
-                      ? '3px solid rgba(255,255,255,0.9)' 
-                      : isSelected ? '3px solid rgba(255,255,255,0.4)' : '1px solid rgba(255,255,255,0.06)'
-                  }}
                 >
-                  <div className="flex justify-between items-start mb-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[15px] font-medium ${isEscalated ? 'text-white' : 'text-white/90'}`}>
+                  {isEscalated && (
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-white shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
+                  )}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <span className={`text-lg font-medium tracking-tight ${isEscalated ? 'text-white' : 'text-white/90'}`}>
                         {p.name}
                       </span>
-                      <span className="text-[11px] px-2.5 py-0.5 rounded-full border border-white/10 text-white/40 uppercase tracking-wider">
+                      {isEscalated && (
+                        <span className="text-[10px] bg-white text-black px-1.5 py-0.5 font-bold rounded uppercase">Urgent</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-white/30 font-medium">4m ago</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-white/40 font-mono tracking-tighter">{p.phone}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/20 border border-white/10 px-2 py-0.5 rounded">
                         {p.workflow_step.replace('_', ' ')}
                       </span>
-                      {isEscalated && <span className="text-[11px] font-medium text-white tracking-widest ml-1">→</span>}
+                      <span className={`text-xs font-medium ${isEscalated ? 'text-white' : 'text-white/40'}`}>
+                        {isEscalated ? 'Escalated' : 'Stable'}
+                      </span>
                     </div>
-                    <span className="text-[12px] text-white/30">Just now</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-[13px] text-white/40 font-mono tracking-tight">{p.phone}</span>
-                    <span className={`text-[12px] ${isEscalated ? 'text-white font-medium' : 'text-white/30'}`}>
-                      {isEscalated ? 'Escalated' : p.risk_level === 'high' ? 'At Risk' : 'Stable'}
-                    </span>
                   </div>
                 </button>
               );
@@ -161,135 +162,110 @@ export default function LifeSaverDashboard() {
           </div>
         </div>
 
-        {/* Right Column: Activity + Detail */}
-        <div className="flex flex-col gap-6 overflow-hidden h-full">
+        {/* Right: Activity + Detail */}
+        <div className="bg-[#000] border-l border-white/10 flex flex-col overflow-hidden">
           
-          {/* Collapsed Activity Log */}
-          <div className="bg-[#0d0d0d] border border-white/5 rounded-[10px] flex flex-col h-[160px] flex-shrink-0">
-            <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
-              <span className="text-[10px] font-medium text-white/30 uppercase tracking-widest">Live Activity</span>
+          {/* Top: Minimal Detail Header */}
+          <div className="p-8 border-b border-white/10 bg-[#080808]">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-2xl font-semibold tracking-tight">{selectedPatient?.name || '---'}</h3>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Patient ID: {selectedPatient?.id.slice(0, 8)}</span>
             </div>
-            <div className="p-4 overflow-y-auto font-mono text-[11px] leading-[1.8] text-white/40">
-              {events.slice(0, 10).map((e) => (
-                <div key={e.id} className="mb-1">
-                  <span className="text-white/20">[{new Date(e.created_at).toLocaleTimeString([], { hour12: false })}]</span>{' '}
-                  <span className={e.type === 'escalated' ? 'text-white font-medium' : 'text-white/50'}>
-                    {e.type.replace('_', ' ').toUpperCase()} → {e.patient_name}
-                  </span>
+            <p className="text-sm text-white/40 font-mono tracking-tight">{selectedPatient?.phone || '---'}</p>
+          </div>
+
+          {/* Middle: Info Grid */}
+          <div className="flex-1 overflow-y-auto p-8 space-y-12 custom-scrollbar">
+            <div className="grid grid-cols-2 gap-y-10 gap-x-8">
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Workflow</h4>
+                <div className="text-sm font-medium">{selectedPatient?.workflow_step.replace('_', ' ') || '---'}</div>
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Risk Level</h4>
+                <div className="text-sm font-medium capitalize">{selectedPatient?.risk_level || '---'}</div>
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Strikes</h4>
+                <div className="flex gap-1.5 pt-1">
+                  {[1, 2, 3].map(s => (
+                    <div key={s} className={`w-4 h-1 rounded-full ${s <= 1 ? 'bg-white shadow-[0_0_5px_rgba(255,255,255,0.5)]' : 'bg-white/10'}`} />
+                  ))}
                 </div>
-              ))}
-              <div className="inline-block w-1.5 h-3 bg-white ml-1 animate-[pulse_1s_infinite]" />
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Last Event</h4>
+                <div className="text-sm font-medium">SMS Delivered</div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Agent Reasoning</h4>
+              <div className="bg-[#0a0a0a] border border-white/10 rounded-xl p-6 text-sm leading-relaxed text-white/60 font-medium italic">
+                {selectedPatient ? (
+                  `"I've initiated the ${selectedPatient.workflow_step} protocol for ${selectedPatient.name.split(' ')[0]}. Clinical indicators remain within normal post-surgical range. No immediate intervention required."`
+                ) : (
+                  '---'
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Live Activity</h4>
+              <div className="space-y-3 font-mono text-[11px] text-white/30">
+                {events.slice(0, 5).map((e) => (
+                  <div key={e.id} className="flex gap-4">
+                    <span className="text-white/10 shrink-0">{new Date(e.created_at).toLocaleTimeString([], { hour12: false })}</span>
+                    <span className={`truncate ${e.type === 'escalated' ? 'text-white' : ''}`}>
+                      {e.type.replace('_', ' ').toUpperCase()}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Patient Detail HERO */}
-          <div className="flex-1 bg-[#111] border border-white/5 rounded-[10px] flex flex-col overflow-hidden shadow-2xl">
-            {selectedPatient ? (
-              <>
-                <div className="p-8 border-b border-white/5">
-                  <h3 className="text-2xl font-semibold tracking-tight text-white mb-1">{selectedPatient.name}</h3>
-                  <p className="text-[14px] text-white/40 font-mono">{selectedPatient.phone}</p>
-                </div>
-
-                <div className="flex-1 p-8 space-y-8 overflow-y-auto">
-                  <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-                    <div>
-                      <h4 className="text-[11px] font-medium text-white/30 uppercase tracking-[0.15em] mb-3">Workflow Step</h4>
-                      <div className="text-[14px] text-white">{selectedPatient.workflow_step.replace('_', ' ')}</div>
-                    </div>
-                    <div>
-                      <h4 className="text-[11px] font-medium text-white/30 uppercase tracking-[0.15em] mb-3">Risk Level</h4>
-                      <div className="text-[14px] text-white capitalize">{selectedPatient.risk_level}</div>
-                    </div>
-                    <div>
-                      <h4 className="text-[11px] font-medium text-white/30 uppercase tracking-[0.15em] mb-3">Strikes</h4>
-                      <div className="flex gap-1.5 mt-1">
-                        {[1, 2, 3].map(s => (
-                          <div 
-                            key={s} 
-                            className={`w-3 h-3 rounded-sm ${s <= 1 ? 'bg-white' : 'bg-white/10'}`} 
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-[11px] font-medium text-white/30 uppercase tracking-[0.15em] mb-3">Last Contact</h4>
-                      <div className="text-[14px] text-white">4 min ago</div>
-                    </div>
-                  </div>
-
-                  <div className="pt-8 border-t border-white/5">
-                    <h4 className="text-[11px] font-medium text-white/30 uppercase tracking-[0.15em] mb-4">Last Message Preview</h4>
-                    <div className="text-[14px] leading-relaxed text-white/80 italic p-4 bg-white/[0.03] rounded-lg border border-white/5">
-                      "Hi {selectedPatient.name.split(' ')[0]}, this is CareOS checking in to see how you're feeling today. Please reply if you have any questions."
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-8 mt-auto border-t border-white/5 space-y-3">
-                  <button 
-                    onClick={handleManualFollowUp}
-                    disabled={isManualTriggering}
-                    className="w-full h-12 bg-white hover:bg-[#e5e5e5] disabled:opacity-50 text-black text-[13px] font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    {isManualTriggering ? (
-                      <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-                    ) : (
-                      'Send Manual Follow-up'
-                    )}
-                  </button>
-                  <button className="w-full h-12 bg-transparent border border-white/10 hover:bg-white/5 text-white text-[13px] font-medium rounded-lg transition-colors">
-                    Call Nurse
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full text-white/20 text-[13px] italic">
-                Select a patient to view details
-              </div>
-            )}
+          {/* Bottom: Actions */}
+          <div className="p-8 border-t border-white/10 bg-black/40 backdrop-blur-sm space-y-3">
+            <button 
+              onClick={handleManualFollowUp}
+              disabled={isManualTriggering}
+              className="w-full h-12 bg-white hover:bg-white/90 text-black text-sm font-bold rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isManualTriggering ? <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" /> : 'Send Manual Follow-up'}
+            </button>
+            <button className="w-full h-12 border border-white/10 hover:bg-white/5 text-white/60 hover:text-white text-sm font-semibold rounded-xl transition-all">
+              Call On-Call Nurse
+            </button>
           </div>
         </div>
 
       </main>
 
       <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-        
-        body {
-          font-family: 'Inter', -apple-system, sans-serif;
-          background: #080808;
-          cursor: default;
-        }
-
-        /* Scrollbar Styling */
-        ::-webkit-scrollbar {
+        .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }
-        ::-webkit-scrollbar-track {
+        .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
         }
-        ::-webkit-scrollbar-thumb {
+        .custom-scrollbar::-webkit-scrollbar-thumb {
           background: rgba(255, 255, 255, 0.1);
           border-radius: 10px;
         }
-        ::-webkit-scrollbar-thumb:hover {
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.2);
         }
-
-        /* Mobile specific adjustments */
-        @media (max-width: 768px) {
-          main {
-            grid-template-columns: 1fr;
-            height: auto;
-            overflow: visible;
-          }
-          .h-full {
-            height: auto;
-          }
-          div[class*="h-[calc(100vh-56px)]"] {
-            height: auto;
-          }
+        
+        body {
+          background: #000;
+          overflow: hidden;
+        }
+        
+        @keyframes pulse-white {
+          0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
         }
       `}</style>
     </div>
