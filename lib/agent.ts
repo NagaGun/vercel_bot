@@ -9,6 +9,21 @@ const openai = createOpenAI({
 });
 
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
+  // Pull last 3 events for conversation memory (from naga branch)
+  const historyQuery = await db.query(
+    `SELECT type, payload FROM events WHERE patient_id = $1 ORDER BY id DESC LIMIT 3`,
+    [patientId]
+  );
+  let historyContext = '';
+  if (historyQuery.rows.length > 0) {
+    historyContext = `\n\nRecent interaction history:\n` +
+      historyQuery.rows.reverse().map((r: any) => `[${r.type}] ${JSON.stringify(r.payload)}`).join('\n');
+  }
+
+  const basePrompt = incomingMessage
+    ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action using their discharge summary for context.`
+    : `Time to send scheduled follow-up to patient ${patientId}. Look up their record first — their discharge summary contains critical context. Use it to send a personalized, clinically relevant message.`;
+
   const result = await generateText({
     model: openai('gpt-4o'),
     stopWhen: stepCountIs(8),
@@ -18,9 +33,7 @@ Danger signs requiring IMMEDIATE escalation: chest pain, shortness of breath, ca
 confusion, fever above 103, surgical site opening, heavy bleeding.
 Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalate when uncertain.`,
 
-    prompt: incomingMessage
-      ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action using their discharge summary for context.`
-      : `Time to send scheduled follow-up to patient ${patientId}. Look up their record first — their discharge summary contains critical context about their condition. Use it to send a personalized, clinically relevant message.`,
+    prompt: basePrompt + historyContext,
 
     tools: {
       lookupPatient: tool({
@@ -68,7 +81,6 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
           const delays: Record<string, number> = { day_3: 3, day_7: 7, day_30: 30, complete: 999 };
           const nextContactAt = new Date();
           nextContactAt.setDate(nextContactAt.getDate() + (delays[nextStep] - 1));
-
           await db.query(
             `UPDATE patients SET workflow_step=$1, next_contact_at=$2 WHERE id=$3`,
             [nextStep, nextContactAt.toISOString(), patientId]
@@ -94,7 +106,19 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
             `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'escalated', $2)`,
             [patientId, JSON.stringify({ reason, urgency })]
           );
-          // In prod: trigger Slack/pager/email to on-call nurse
+          // Slack ping from naga branch — fires if configured, silent if not
+          if (process.env.SLACK_WEBHOOK_URL) {
+            try {
+              await fetch(process.env.SLACK_WEBHOOK_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                  text: `🚨 *CareOS ESCALATION*\nPatient \`${patientId}\`\n*Reason*: ${reason}\n*Risk*: ${urgency}`
+                })
+              });
+            } catch (e) {
+              console.error('Slack ping failed', e);
+            }
+          }
           return { escalated: true, reason };
         },
       }),
@@ -104,7 +128,7 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
   try {
     const reasoningSteps = result.steps.map(step => ({
       text: step.text,
-      toolCalls: step.toolCalls.map(tc => tc.toolName)
+      toolCalls: step.toolCalls.map((tc: any) => tc.toolName)
     }));
     await db.query(
       `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'agent_reasoning', $2)`,
