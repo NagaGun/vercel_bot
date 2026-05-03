@@ -36,12 +36,12 @@ Always be brief in SMS. Never diagnose. Always escalate when uncertain.`,
     prompt: basePrompt + historyContext,
 
     tools: {
-      lookupPatient: tool({
+      lookupPatient: {
         description: 'Get patient info, current workflow step, and discharge summary. ALWAYS call this first.',
         parameters: z.object({
           patientId: z.string().describe('The unique UUID of the patient'),
         }),
-        execute: async ({ patientId }) => {
+        execute: async ({ patientId }: { patientId: string }) => {
           const patient = await db.query(
             'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1',
             [patientId]
@@ -52,15 +52,15 @@ Always be brief in SMS. Never diagnose. Always escalate when uncertain.`,
           }
           return row;
         },
-      }),
+      },
 
-      sendSMSToPatient: tool({
+      sendSMSToPatient: {
         description: 'Send an SMS message to the patient',
         parameters: z.object({
           patientId: z.string().describe('The unique UUID of the patient'),
           message: z.string().max(320).describe('The clinical SMS message content'),
         }),
-        execute: async ({ patientId, message }) => {
+        execute: async ({ patientId, message }: { patientId: string; message: string }) => {
           const patient = await db.query('SELECT phone FROM patients WHERE id = $1', [patientId]);
           await sendSMS(patient.rows[0].phone, message);
           await db.query(
@@ -69,15 +69,15 @@ Always be brief in SMS. Never diagnose. Always escalate when uncertain.`,
           );
           return { sent: true };
         },
-      }),
+      },
 
-      advanceWorkflow: tool({
+      advanceWorkflow: {
         description: 'Move patient to next scheduled step',
         parameters: z.object({
           patientId: z.string().describe('The unique UUID of the patient'),
           nextStep: z.enum(['day_3', 'day_7', 'day_30', 'complete']).describe('The next clinical follow-up milestone'),
         }),
-        execute: async ({ patientId, nextStep }) => {
+        execute: async ({ patientId, nextStep }: { patientId: string; nextStep: string }) => {
           const delays: Record<string, number> = { day_3: 3, day_7: 7, day_30: 30, complete: 999 };
           const nextContactAt = new Date();
           nextContactAt.setDate(nextContactAt.getDate() + (delays[nextStep] ?? 1));
@@ -87,16 +87,16 @@ Always be brief in SMS. Never diagnose. Always escalate when uncertain.`,
           );
           return { advanced: true, nextStep };
         },
-      }),
+      },
 
-      escalateToNurse: tool({
+      escalateToNurse: {
         description: 'Flag patient as critical — requires nurse review NOW',
         parameters: z.object({
           patientId: z.string().describe('The unique UUID of the patient'),
           reason: z.string().describe('Detailed clinical reason for escalation'),
           urgency: z.enum(['high', 'critical']).describe('The triage priority level'),
         }),
-        execute: async ({ patientId, reason, urgency }) => {
+        execute: async ({ patientId, reason, urgency }: { patientId: string; reason: string; urgency: string }) => {
           await db.query(
             `UPDATE patients SET workflow_step='escalated', risk_level=$1 WHERE id=$2`,
             [urgency, patientId]
@@ -115,7 +115,7 @@ Always be brief in SMS. Never diagnose. Always escalate when uncertain.`,
           }
           return { escalated: true, reason };
         },
-      }),
+      },
     },
   });
 
