@@ -31,7 +31,7 @@ export async function GET(req: Request) {
         return { ok: id };
       } catch (err) {
         console.error("Agent error for", id, err);
-        return { error: id };
+        return { error: String(err), patientId: id };
       }
     })
   );
