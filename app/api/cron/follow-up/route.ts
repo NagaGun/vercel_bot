@@ -36,5 +36,13 @@ export async function GET(req: Request) {
     })
   );
 
-  return NextResponse.json({ processed: results.length });
+  return NextResponse.json({ 
+    processed: results.length,
+    results: results.map((r, i) => ({
+      patient: due.rows[i]?.id,
+      status: r.status,
+      value: r.status === 'fulfilled' ? r.value : undefined,
+      error: r.status === 'rejected' ? String(r.reason) : undefined,
+    }))
+  });
 }
