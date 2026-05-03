@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { kv } from '@/lib/kv';
 import { runFollowUpAgent } from '@/lib/agent';
 
 export const maxDuration = 60; // 1 min, Free tier limit
@@ -27,15 +26,12 @@ export async function GET(req: Request) {
 
   const results = await Promise.allSettled(
     due.rows.map(async ({ id }) => {
-      // Idempotency: skip if already being processed
-      const lock = await kv.set(`lock:${id}`, '1', { nx: true, ex: 600 });
-      if (!lock) return { skipped: id };
-
       try {
         await runFollowUpAgent(id);
         return { ok: id };
-      } finally {
-        await kv.del(`lock:${id}`);
+      } catch (err) {
+        console.error("Agent error for", id, err);
+        return { error: id };
       }
     })
   );

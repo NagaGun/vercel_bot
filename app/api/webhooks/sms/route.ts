@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import twilio from 'twilio';
 import { db } from '@/lib/db';
-import { kv } from '@/lib/kv';
+// Removed kv
 import { runFollowUpAgent } from '@/lib/agent';
 
 export async function POST(req: NextRequest) {
@@ -37,13 +37,7 @@ export async function POST(req: NextRequest) {
     headers: { 'Content-Type': 'text/xml' }
   });
 
-  // Rate limit: max 10 inbound per patient per hour
-  const key = `rate:sms:${patient.rows[0].id}`;
-  const count = await kv.incr(key);
-  if (count === 1) await kv.expire(key, 3600);
-  if (count > 10) return new NextResponse('<?xml version="1.0"?><Response/>', {
-    headers: { 'Content-Type': 'text/xml' }
-  });
+  // Rate limiting removed for hackathon simplicity
 
   // Fire agent asynchronously — Twilio needs a fast reply
   runFollowUpAgent(patient.rows[0].id, message).catch(console.error);
