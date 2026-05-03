@@ -35,10 +35,35 @@ export default function LifeSaverDashboard() {
       ]);
       const patientsData = await patientsRes.json();
       const eventsData = await eventsRes.json();
-      const pList = patientsData.patients || [];
+      const pList: Patient[] = patientsData.patients || [];
+      
       setPatients(pList);
       setEvents(eventsData.events || []);
-      if (!selectedId && pList.length > 0) setSelectedId(pList[0].id);
+
+      // Selection Logic:
+      // 1. If nothing is selected, select the first patient
+      // 2. If the current selectedId is gone (e.g. after re-seed), try to find a patient with the SAME NAME
+      // 3. If name match fails, fallback to the first patient
+      if (pList.length > 0) {
+        if (!selectedId) {
+          setSelectedId(pList[0].id);
+        } else {
+          const currentlySelected = pList.find(p => p.id === selectedId);
+          if (!currentlySelected) {
+            // Patient ID changed (likely due to re-seeding)
+            // Try to find the same patient by name
+            const previousName = patients.find(p => p.id === selectedId)?.name;
+            const samePatientNewId = pList.find(p => p.name === previousName);
+            
+            if (samePatientNewId) {
+              setSelectedId(samePatientNewId.id);
+            } else {
+              // Patient is truly gone, default to first
+              setSelectedId(pList[0].id);
+            }
+          }
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {
