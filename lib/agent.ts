@@ -33,10 +33,7 @@ CRITICAL: You must output your response in this EXACT format:
 Reasoning: <your reasoning here>
 Action: {"type": "send_sms", "message": "<warm personalized message>"}
 
-If the patient mentioned danger signs (chest pain, etc), use Action: {"type": "escalate", "urgency": "critical", "reason": "..."}
-To move to the next day, use Action: {"type": "advance_workflow", "next_step": "day_3"}
-
-If this is a scheduled check-in and no previous message was sent, YOU MUST SEND AN SMS NOW.`;
+If this is a scheduled check-in and no previous message was sent, YOU MUST ONLY use Action: {"type": "send_sms", ...}. Do NOT advance the workflow or escalate until the patient responds.`;
 
   const userPrompt = incomingMessage 
     ? `Patient replied: "${incomingMessage}"`
