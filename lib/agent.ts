@@ -1,12 +1,17 @@
 import { generateText, tool } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { db } from './db';
 import { sendSMS } from './twilio';
 
+const nvidia = createOpenAI({
+  baseURL: 'https://integrate.api.nvidia.com/v1',
+  apiKey: process.env.NVIDIA_API_KEY,
+});
+
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
   const result = await generateText({
-    model: anthropic('claude-sonnet-4-20250514'),
+    model: nvidia('google/gemma-3n-e4b-it'),
     maxSteps: 8,
     system: `You are CareOS, a clinical post-discharge follow-up agent.
 Your job: contact patients, parse their responses, and escalate to nurses when there are danger signs.
