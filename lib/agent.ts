@@ -19,19 +19,23 @@ confusion, fever above 103, surgical site opening, heavy bleeding.
 Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalate when uncertain.`,
 
     prompt: incomingMessage
-      ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action.`
-      : `Time to send scheduled follow-up to patient ${patientId}. Look up their record and send the right message.`,
+      ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action using their discharge summary for context.`
+      : `Time to send scheduled follow-up to patient ${patientId}. Look up their record first — their discharge summary contains critical context about their condition. Use it to send a personalized, clinically relevant message.`,
 
     tools: {
       lookupPatient: tool({
-        description: 'Get patient info and current workflow step',
+        description: 'Get patient info, current workflow step, and their discharge summary. ALWAYS call this first.',
         parameters: z.object({ patientId: z.string() }),
         // @ts-ignore
         execute: async ({ patientId }: { patientId: string }) => {
           const patient = await db.query(
-            'SELECT * FROM patients WHERE id = $1', [patientId]
+            'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1', [patientId]
           );
-          return patient.rows[0];
+          const row = patient.rows[0];
+          if (row?.discharge_summary) {
+            row.discharge_summary = row.discharge_summary.split(/\s+/).slice(0, 400).join(' ');
+          }
+          return row;
         },
       }),
 
