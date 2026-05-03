@@ -1,5 +1,6 @@
-import { generateText, tool, stepCountIs, jsonSchema } from 'ai';
+import { generateText, tool, stepCountIs } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { z } from 'zod';
 import { db } from './db';
 import { sendSMS } from './twilio';
 
@@ -37,12 +38,8 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
     tools: {
       lookupPatient: tool({
         description: 'Get patient info, current workflow step, and discharge summary. ALWAYS call this first.',
-        parameters: jsonSchema<{ patientId: string }>({
-          type: 'object',
-          properties: { patientId: { type: 'string' } },
-          required: ['patientId'],
-        }),
-        execute: async ({ patientId }: { patientId: string }) => {
+        parameters: z.object({ patientId: z.string() }),
+        execute: async ({ patientId }) => {
           const patient = await db.query(
             'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1',
             [patientId]
@@ -57,15 +54,11 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       sendSMSToPatient: tool({
         description: 'Send an SMS message to the patient',
-        parameters: jsonSchema<{ patientId: string; message: string }>({
-          type: 'object',
-          properties: {
-            patientId: { type: 'string' },
-            message: { type: 'string', maxLength: 320 },
-          },
-          required: ['patientId', 'message'],
+        parameters: z.object({
+          patientId: z.string(),
+          message: z.string().max(320),
         }),
-        execute: async ({ patientId, message }: { patientId: string; message: string }) => {
+        execute: async ({ patientId, message }) => {
           const patient = await db.query('SELECT phone FROM patients WHERE id = $1', [patientId]);
           await sendSMS(patient.rows[0].phone, message);
           await db.query(
@@ -78,15 +71,11 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       advanceWorkflow: tool({
         description: 'Move patient to next scheduled step',
-        parameters: jsonSchema<{ patientId: string; nextStep: string }>({
-          type: 'object',
-          properties: {
-            patientId: { type: 'string' },
-            nextStep: { type: 'string', enum: ['day_3', 'day_7', 'day_30', 'complete'] },
-          },
-          required: ['patientId', 'nextStep'],
+        parameters: z.object({
+          patientId: z.string(),
+          nextStep: z.enum(['day_3', 'day_7', 'day_30', 'complete']),
         }),
-        execute: async ({ patientId, nextStep }: { patientId: string; nextStep: string }) => {
+        execute: async ({ patientId, nextStep }) => {
           const delays: Record<string, number> = { day_3: 3, day_7: 7, day_30: 30, complete: 999 };
           const nextContactAt = new Date();
           nextContactAt.setDate(nextContactAt.getDate() + (delays[nextStep] ?? 1));
@@ -100,16 +89,12 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       escalateToNurse: tool({
         description: 'Flag patient as critical — requires nurse review NOW',
-        parameters: jsonSchema<{ patientId: string; reason: string; urgency: string }>({
-          type: 'object',
-          properties: {
-            patientId: { type: 'string' },
-            reason: { type: 'string' },
-            urgency: { type: 'string', enum: ['high', 'critical'] },
-          },
-          required: ['patientId', 'reason', 'urgency'],
+        parameters: z.object({
+          patientId: z.string(),
+          reason: z.string(),
+          urgency: z.enum(['high', 'critical']),
         }),
-        execute: async ({ patientId, reason, urgency }: { patientId: string; reason: string; urgency: string }) => {
+        execute: async ({ patientId, reason, urgency }) => {
           await db.query(
             `UPDATE patients SET workflow_step='escalated', risk_level=$1 WHERE id=$2`,
             [urgency, patientId]
