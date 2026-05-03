@@ -9,7 +9,7 @@ const openai = new OpenAI({
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
   // 1. Fetch patient context
   const patientRes = await db.query(
-    'SELECT id, name, phone, workflow_step, risk_level, discharge_summary FROM patients WHERE id = $1',
+    'SELECT id, name, phone, workflow_step, risk_level FROM patients WHERE id = $1',
     [patientId]
   );
   const patient = patientRes.rows[0];
