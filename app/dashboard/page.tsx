@@ -345,7 +345,7 @@ export default function LifeSaverDashboard() {
                     Escalate to Nurse
                   </button>
                 </div>
-              </>
+              </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-white/10 gap-4">
                 <Activity className="w-10 h-10 opacity-20" />
