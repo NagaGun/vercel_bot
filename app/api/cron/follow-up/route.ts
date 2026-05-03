@@ -8,10 +8,11 @@ export async function GET(req: Request) {
   // Verify this is actually from Vercel Cron or manual demo trigger via header
   const authHeader = req.headers.get('Authorization');
   const customHeader = req.headers.get('x-cron-secret');
+  const cronSecret = process.env.CRON_SECRET || 'careos-cron';
   
   if (
-    authHeader !== `Bearer ${process.env.CRON_SECRET}` && 
-    customHeader !== process.env.CRON_SECRET
+    authHeader !== `Bearer ${cronSecret}` && 
+    customHeader !== cronSecret
   ) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
