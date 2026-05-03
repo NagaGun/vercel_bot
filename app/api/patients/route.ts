@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
     await db.query(`
       INSERT INTO patients (name, phone, discharge_date, consent_given, workflow_step, next_contact_at)
       VALUES 
-        ('John Doe', $1, NOW(), TRUE, 'day_1', $2),
-        ('Jane Smith', '+15555550002', NOW(), TRUE, 'day_3', $2),
+        ('Jane Smith', $1, NOW(), TRUE, 'day_1', $2),
+        ('Sarah Williams', '+15555550002', NOW(), TRUE, 'day_3', $2),
         ('Bob Johnson', '+15555550003', NOW(), TRUE, 'day_7', $2)
     `, [demoPhone, past.toISOString()]);
 

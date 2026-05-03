@@ -6,7 +6,15 @@ const pool = new Pool({
 });
 
 async function seedConvo() {
-  const patientId = '04e6f38c-f11c-40c9-8650-d3452f6599c4'; // John Doe
+  // Dynamically find Jane Smith
+  const patientRes = await pool.query("SELECT id FROM patients WHERE name = 'Jane Smith' LIMIT 1");
+  const patientId = patientRes.rows[0]?.id;
+
+  if (!patientId) {
+    console.error("Jane Smith not found. Please seed patients first.");
+    await pool.end();
+    return;
+  }
   
   // Clear old events for this patient to make it clean
   await pool.query('DELETE FROM events WHERE patient_id = $1', [patientId]);
@@ -14,32 +22,32 @@ async function seedConvo() {
   const events = [
     {
       type: 'sms_sent',
-      payload: { message: "Hi John, this is CareOS. We're checking in on your first day post-discharge. How are you feeling today?" },
+      payload: { message: "Hi Jane, this is CareOS. We're checking in on your first day post-discharge. How are you feeling today?" },
       created_at: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
     },
     {
       type: 'agent_reasoning',
-      payload: { steps: [{ text: "Initiated day-1 protocol. Waiting for patient response to establish baseline vitals." }] },
+      payload: { steps: [{ text: "Initiated day-1 protocol. Waiting for Jane's response to establish baseline vitals." }] },
       created_at: new Date(Date.now() - 3590000).toISOString()
     },
     {
       type: 'sms_received',
-      payload: { body: "I'm okay, but my chest feels a little tight when I breathe." },
+      payload: { body: "I'm not feeling great. I have a sharp pain in my chest when I take deep breaths, and my left leg is quite swollen and painful." },
       created_at: new Date(Date.now() - 1800000).toISOString() // 30 min ago
     },
     {
       type: 'agent_reasoning',
-      payload: { steps: [{ text: "Critical indicator detected: 'chest tightness'. This is a high-risk symptom for post-op patients. Initiating immediate escalation protocol." }] },
+      payload: { steps: [{ text: "CRITICAL: Jane is reporting pleuritic chest pain and unilateral leg swelling. These are classic indicators for DVT/PE (Deep Vein Thrombosis leading to Pulmonary Embolism). This significantly increases her mortality risk. Initiating immediate emergency escalation." }] },
       created_at: new Date(Date.now() - 1790000).toISOString()
     },
     {
       type: 'escalated',
-      payload: { reason: "Patient reported chest tightness on Day 1.", urgency: "critical" },
+      payload: { reason: "Jane reported pleuritic chest pain and unilateral leg swelling (DVT/PE risk).", urgency: "critical" },
       created_at: new Date(Date.now() - 1780000).toISOString()
     },
     {
       type: 'sms_sent',
-      payload: { message: "John, I've notified our clinical team about your chest tightness. A nurse will be calling you shortly. Please sit down and try to relax." },
+      payload: { message: "Jane, I've notified our clinical team immediately about your chest pain and leg swelling. A nurse is being paged now. Please sit down, try to breathe slowly, and do not walk around." },
       created_at: new Date(Date.now() - 1770000).toISOString()
     }
   ];
@@ -51,13 +59,13 @@ async function seedConvo() {
     );
   }
 
-  // Update John Doe to Escalated
+  // Update Jane Smith to Escalated
   await pool.query(
     "UPDATE patients SET workflow_step = 'escalated', risk_level = 'critical' WHERE id = $1",
     [patientId]
   );
 
-  console.log('Seeded John Doe convo successfully.');
+  console.log('Seeded Jane Smith convo successfully.');
   await pool.end();
 }
 
