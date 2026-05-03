@@ -1,136 +1,101 @@
-import { generateText, tool, stepCountIs } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { z } from 'zod';
+import OpenAI from 'openai';
 import { db } from './db';
 import { sendSMS } from './twilio';
 
-// openai is imported from @ai-sdk/openai, no need to redefine it
-
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
-  // Pull last 3 events for conversation memory
-  const historyQuery = await db.query(
+  // 1. Fetch patient context
+  const patientRes = await db.query(
+    'SELECT id, name, phone, workflow_step, risk_level, discharge_summary FROM patients WHERE id = $1',
+    [patientId]
+  );
+  const patient = patientRes.rows[0];
+  if (!patient) return { error: 'Patient not found' };
+
+  // 2. Fetch history
+  const historyRes = await db.query(
     `SELECT type, payload FROM events WHERE patient_id = $1 ORDER BY id DESC LIMIT 3`,
     [patientId]
   );
-  let historyContext = '';
-  if (historyQuery.rows.length > 0) {
-    historyContext = `\n\nRecent interaction history:\n` +
-      historyQuery.rows.reverse().map((r: any) => `[${r.type}] ${JSON.stringify(r.payload)}`).join('\n');
-  }
+  const history = historyRes.rows.reverse().map((r: any) => `${r.type}: ${JSON.stringify(r.payload)}`).join('\n');
 
-  const basePrompt = incomingMessage
-    ? `Patient ID ${patientId} replied: "${incomingMessage}". Analyze and take appropriate action using their discharge summary for context.`
-    : `Time to send scheduled follow-up to patient ${patientId}. Look up their record first — their discharge summary contains critical context. Use it to send a personalized, clinically relevant message.`;
+  const systemPrompt = `You are CareOS, a clinical post-discharge follow-up agent.
+Your job: contact patients via SMS, parse responses, and escalate to nurses for danger signs (chest pain, breathing issues, etc).
+Context for Patient ${patient.name}:
+- Discharge Summary: ${patient.discharge_summary || 'None'}
+- Current Step: ${patient.workflow_step}
+- History: ${history}
 
-  const result = await generateText({
-    model: openai('gpt-4o'),
-    stopWhen: stepCountIs(8),
-    system: `You are CareOS, a clinical post-discharge follow-up agent.
-Your job: contact patients, parse their responses, and escalate to nurses when there are danger signs.
-You are running as an automated service. NEVER ask the user for permission.
-If a patient is due for a check-in, ALWAYS call lookupPatient first, then ALWAYS call sendSMSToPatient to initiate contact.
-If the discharge summary is missing, send a warm, general follow-up message.
-Always be brief in SMS. Never diagnose. Always escalate when uncertain.`,
+If this is a NEW follow-up (no incoming message), your goal is to send a warm check-in SMS.
+If this is a REPLY from the patient, analyze it and either reply via SMS or escalate to a nurse.
 
-    prompt: basePrompt + historyContext,
+Available Actions:
+- send_sms(message): Send a text (max 160 chars recommended).
+- escalate(reason, urgency): Flag to nurse (urgency: high/critical).
+- advance_workflow(next_step): Move to day_3, day_7, day_30, or complete.
 
-    tools: {
-      lookupPatient: {
-        description: 'Get patient info, current workflow step, and discharge summary. ALWAYS call this first.',
-        parameters: z.object({
-          patientId: z.string().describe('The unique UUID of the patient'),
-        }),
-        execute: async ({ patientId }: { patientId: string }) => {
-          const patient = await db.query(
-            'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1',
-            [patientId]
-          );
-          const row = patient.rows[0];
-          if (row?.discharge_summary) {
-            row.discharge_summary = row.discharge_summary.split(/\s+/).slice(0, 400).join(' ');
-          }
-          return row;
-        },
-      },
+Output your reasoning first, then a JSON action:
+Reasoning: [your thought process]
+Action: {"type": "send_sms", "message": "..."}`;
 
-      sendSMSToPatient: {
-        description: 'Send an SMS message to the patient',
-        parameters: z.object({
-          patientId: z.string().describe('The unique UUID of the patient'),
-          message: z.string().max(320).describe('The clinical SMS message content'),
-        }),
-        execute: async ({ patientId, message }: { patientId: string; message: string }) => {
-          const patient = await db.query('SELECT phone FROM patients WHERE id = $1', [patientId]);
-          await sendSMS(patient.rows[0].phone, message);
-          await db.query(
-            `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'sms_sent', $2)`,
-            [patientId, JSON.stringify({ message })]
-          );
-          return { sent: true };
-        },
-      },
+  const userPrompt = incomingMessage 
+    ? `Patient says: "${incomingMessage}"`
+    : `Initiate scheduled follow-up for ${patient.name}.`;
 
-      advanceWorkflow: {
-        description: 'Move patient to next scheduled step',
-        parameters: z.object({
-          patientId: z.string().describe('The unique UUID of the patient'),
-          nextStep: z.enum(['day_3', 'day_7', 'day_30', 'complete']).describe('The next clinical follow-up milestone'),
-        }),
-        execute: async ({ patientId, nextStep }: { patientId: string; nextStep: string }) => {
-          const delays: Record<string, number> = { day_3: 3, day_7: 7, day_30: 30, complete: 999 };
-          const nextContactAt = new Date();
-          nextContactAt.setDate(nextContactAt.getDate() + (delays[nextStep] ?? 1));
-          await db.query(
-            `UPDATE patients SET workflow_step=$1, next_contact_at=$2 WHERE id=$3`,
-            [nextStep, nextContactAt.toISOString(), patientId]
-          );
-          return { advanced: true, nextStep };
-        },
-      },
-
-      escalateToNurse: {
-        description: 'Flag patient as critical — requires nurse review NOW',
-        parameters: z.object({
-          patientId: z.string().describe('The unique UUID of the patient'),
-          reason: z.string().describe('Detailed clinical reason for escalation'),
-          urgency: z.enum(['high', 'critical']).describe('The triage priority level'),
-        }),
-        execute: async ({ patientId, reason, urgency }: { patientId: string; reason: string; urgency: string }) => {
-          await db.query(
-            `UPDATE patients SET workflow_step='escalated', risk_level=$1 WHERE id=$2`,
-            [urgency, patientId]
-          );
-          await db.query(
-            `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'escalated', $2)`,
-            [patientId, JSON.stringify({ reason, urgency })]
-          );
-          if (process.env.SLACK_WEBHOOK_URL) {
-            fetch(process.env.SLACK_WEBHOOK_URL, {
-              method: 'POST',
-              body: JSON.stringify({
-                text: `🚨 *CareOS ESCALATION*\nPatient \`${patientId}\`\n*Reason*: ${reason}\n*Risk*: ${urgency}`
-              })
-            }).catch(console.error);
-          }
-          return { escalated: true, reason };
-        },
-      },
-    },
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature: 0.1,
   });
 
-  try {
-    const reasoningSteps = result.steps.map(step => ({
-      text: step.text,
-      toolCalls: step.toolCalls.map((tc: any) => tc.toolName)
-    }));
-    await db.query(
-      `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'agent_reasoning', $2)`,
-      [patientId, JSON.stringify({ steps: reasoningSteps })]
-    );
-  } catch (error) {
-    console.error('Failed to log reasoning steps', error);
+  const content = response.choices[0].message.content || '';
+  console.log('Agent reasoning:', content);
+
+  // Parse Action
+  const actionMatch = content.match(/Action:\s*(\{.*\})/s);
+  if (actionMatch) {
+    try {
+      const action = JSON.parse(actionMatch[1]);
+      
+      if (action.type === 'send_sms') {
+        await sendSMS(patient.phone, action.message);
+        await db.query(
+          `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'sms_sent', $2)`,
+          [patientId, JSON.stringify({ message: action.message })]
+        );
+      } else if (action.type === 'escalate') {
+        await db.query(
+          `UPDATE patients SET workflow_step='escalated', risk_level=$1 WHERE id=$2`,
+          [action.urgency, patientId]
+        );
+        await db.query(
+          `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'escalated', $2)`,
+          [patientId, JSON.stringify({ reason: action.reason, urgency: action.urgency })]
+        );
+      } else if (action.type === 'advance_workflow') {
+        await db.query(
+          `UPDATE patients SET workflow_step=$1 WHERE id=$2`,
+          [action.next_step, patientId]
+        );
+      }
+
+      // Log reasoning
+      await db.query(
+        `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'agent_reasoning', $2)`,
+        [patientId, JSON.stringify({ steps: [{ text: content, toolCalls: [action.type] }] })]
+      );
+
+      return { ok: patientId, action: action.type };
+    } catch (e) {
+      console.error('Failed to parse action', e);
+    }
   }
 
-  return result;
+  return { ok: patientId, reasoning: content };
 }
