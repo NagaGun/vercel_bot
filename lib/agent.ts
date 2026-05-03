@@ -1,5 +1,5 @@
 import { generateText, tool, stepCountIs } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { db } from './db';
 import { sendSMS } from './twilio';
@@ -38,7 +38,9 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
     tools: {
       lookupPatient: tool({
         description: 'Get patient info, current workflow step, and discharge summary. ALWAYS call this first.',
-        inputSchema: z.object({ patientId: z.string() }),
+        parameters: z.object({
+          patientId: z.string().describe('The unique UUID of the patient'),
+        }),
         execute: async ({ patientId }) => {
           const patient = await db.query(
             'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1',
@@ -54,9 +56,9 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       sendSMSToPatient: tool({
         description: 'Send an SMS message to the patient',
-        inputSchema: z.object({
-          patientId: z.string(),
-          message: z.string().max(320),
+        parameters: z.object({
+          patientId: z.string().describe('The unique UUID of the patient'),
+          message: z.string().max(320).describe('The clinical SMS message content'),
         }),
         execute: async ({ patientId, message }) => {
           const patient = await db.query('SELECT phone FROM patients WHERE id = $1', [patientId]);
@@ -71,9 +73,9 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       advanceWorkflow: tool({
         description: 'Move patient to next scheduled step',
-        inputSchema: z.object({
-          patientId: z.string(),
-          nextStep: z.enum(['day_3', 'day_7', 'day_30', 'complete']),
+        parameters: z.object({
+          patientId: z.string().describe('The unique UUID of the patient'),
+          nextStep: z.enum(['day_3', 'day_7', 'day_30', 'complete']).describe('The next clinical follow-up milestone'),
         }),
         execute: async ({ patientId, nextStep }) => {
           const delays: Record<string, number> = { day_3: 3, day_7: 7, day_30: 30, complete: 999 };
@@ -89,10 +91,10 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       escalateToNurse: tool({
         description: 'Flag patient as critical — requires nurse review NOW',
-        inputSchema: z.object({
-          patientId: z.string(),
-          reason: z.string(),
-          urgency: z.enum(['high', 'critical']),
+        parameters: z.object({
+          patientId: z.string().describe('The unique UUID of the patient'),
+          reason: z.string().describe('Detailed clinical reason for escalation'),
+          urgency: z.enum(['high', 'critical']).describe('The triage priority level'),
         }),
         execute: async ({ patientId, reason, urgency }) => {
           await db.query(
