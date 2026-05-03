@@ -1,6 +1,5 @@
-import { generateText, tool, stepCountIs } from 'ai';
+import { generateText, tool, stepCountIs, jsonSchema } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { z } from 'zod';
 import { db } from './db';
 import { sendSMS } from './twilio';
 
@@ -9,7 +8,7 @@ const openai = createOpenAI({
 });
 
 export async function runFollowUpAgent(patientId: string, incomingMessage?: string) {
-  // Pull last 3 events for conversation memory (from naga branch)
+  // Pull last 3 events for conversation memory
   const historyQuery = await db.query(
     `SELECT type, payload FROM events WHERE patient_id = $1 ORDER BY id DESC LIMIT 3`,
     [patientId]
@@ -37,12 +36,16 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
     tools: {
       lookupPatient: tool({
-        description: 'Get patient info, current workflow step, and their discharge summary. ALWAYS call this first.',
-        parameters: z.object({ patientId: z.string() }),
-        // @ts-ignore
+        description: 'Get patient info, current workflow step, and discharge summary. ALWAYS call this first.',
+        parameters: jsonSchema<{ patientId: string }>({
+          type: 'object',
+          properties: { patientId: { type: 'string' } },
+          required: ['patientId'],
+        }),
         execute: async ({ patientId }: { patientId: string }) => {
           const patient = await db.query(
-            'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1', [patientId]
+            'SELECT id, name, phone, workflow_step, risk_level, discharge_date, medications, discharge_summary FROM patients WHERE id = $1',
+            [patientId]
           );
           const row = patient.rows[0];
           if (row?.discharge_summary) {
@@ -54,12 +57,15 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       sendSMSToPatient: tool({
         description: 'Send an SMS message to the patient',
-        parameters: z.object({
-          patientId: z.string(),
-          message: z.string().max(320),
+        parameters: jsonSchema<{ patientId: string; message: string }>({
+          type: 'object',
+          properties: {
+            patientId: { type: 'string' },
+            message: { type: 'string', maxLength: 320 },
+          },
+          required: ['patientId', 'message'],
         }),
-        // @ts-ignore
-        execute: async ({ patientId, message }: { patientId: string, message: string }) => {
+        execute: async ({ patientId, message }: { patientId: string; message: string }) => {
           const patient = await db.query('SELECT phone FROM patients WHERE id = $1', [patientId]);
           await sendSMS(patient.rows[0].phone, message);
           await db.query(
@@ -72,15 +78,18 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       advanceWorkflow: tool({
         description: 'Move patient to next scheduled step',
-        parameters: z.object({
-          patientId: z.string(),
-          nextStep: z.enum(['day_3', 'day_7', 'day_30', 'complete']),
+        parameters: jsonSchema<{ patientId: string; nextStep: string }>({
+          type: 'object',
+          properties: {
+            patientId: { type: 'string' },
+            nextStep: { type: 'string', enum: ['day_3', 'day_7', 'day_30', 'complete'] },
+          },
+          required: ['patientId', 'nextStep'],
         }),
-        // @ts-ignore
-        execute: async ({ patientId, nextStep }: { patientId: string, nextStep: 'day_3'|'day_7'|'day_30'|'complete' }) => {
+        execute: async ({ patientId, nextStep }: { patientId: string; nextStep: string }) => {
           const delays: Record<string, number> = { day_3: 3, day_7: 7, day_30: 30, complete: 999 };
           const nextContactAt = new Date();
-          nextContactAt.setDate(nextContactAt.getDate() + (delays[nextStep] - 1));
+          nextContactAt.setDate(nextContactAt.getDate() + (delays[nextStep] ?? 1));
           await db.query(
             `UPDATE patients SET workflow_step=$1, next_contact_at=$2 WHERE id=$3`,
             [nextStep, nextContactAt.toISOString(), patientId]
@@ -91,13 +100,16 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
 
       escalateToNurse: tool({
         description: 'Flag patient as critical — requires nurse review NOW',
-        parameters: z.object({
-          patientId: z.string(),
-          reason: z.string(),
-          urgency: z.enum(['high', 'critical']),
+        parameters: jsonSchema<{ patientId: string; reason: string; urgency: string }>({
+          type: 'object',
+          properties: {
+            patientId: { type: 'string' },
+            reason: { type: 'string' },
+            urgency: { type: 'string', enum: ['high', 'critical'] },
+          },
+          required: ['patientId', 'reason', 'urgency'],
         }),
-        // @ts-ignore
-        execute: async ({ patientId, reason, urgency }: { patientId: string, reason: string, urgency: 'high'|'critical' }) => {
+        execute: async ({ patientId, reason, urgency }: { patientId: string; reason: string; urgency: string }) => {
           await db.query(
             `UPDATE patients SET workflow_step='escalated', risk_level=$1 WHERE id=$2`,
             [urgency, patientId]
@@ -106,18 +118,13 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
             `INSERT INTO events (patient_id, type, payload) VALUES ($1, 'escalated', $2)`,
             [patientId, JSON.stringify({ reason, urgency })]
           );
-          // Slack ping from naga branch — fires if configured, silent if not
           if (process.env.SLACK_WEBHOOK_URL) {
-            try {
-              await fetch(process.env.SLACK_WEBHOOK_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                  text: `🚨 *CareOS ESCALATION*\nPatient \`${patientId}\`\n*Reason*: ${reason}\n*Risk*: ${urgency}`
-                })
-              });
-            } catch (e) {
-              console.error('Slack ping failed', e);
-            }
+            fetch(process.env.SLACK_WEBHOOK_URL, {
+              method: 'POST',
+              body: JSON.stringify({
+                text: `🚨 *CareOS ESCALATION*\nPatient \`${patientId}\`\n*Reason*: ${reason}\n*Risk*: ${urgency}`
+              })
+            }).catch(console.error);
           }
           return { escalated: true, reason };
         },
@@ -135,7 +142,7 @@ Always be warm, clear, and brief in SMS messages. Never diagnose. Always escalat
       [patientId, JSON.stringify({ steps: reasoningSteps })]
     );
   } catch (error) {
-    console.error("Failed to log reasoning steps", error);
+    console.error('Failed to log reasoning steps', error);
   }
 
   return result;
